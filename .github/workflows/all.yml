@@ -1,4 +1,4 @@
-name: Debug
+name: Debug JWT and CLI
 
 on:
   workflow_dispatch:
