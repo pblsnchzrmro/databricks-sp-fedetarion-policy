@@ -1,0 +1,29 @@
+name: GitHub Action Auth
+run-name: ${{ github.actor }} testing
+on: workflow_dispatch
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  databricks-cli-auth:
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Run Databricks CLI with debug
+        run: databricks --debug current-user me
+      
+      - name: Run Databricks CLI with debug cluster list
+        run: databricks --debug clusters list

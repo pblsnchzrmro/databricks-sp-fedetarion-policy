@@ -1,0 +1,87 @@
+name: Debug
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  show_oidc_token:
+    runs-on: ubuntu-latest
+    environment: prod
+    env:
+      AUDIENCE: https://github.com/pblsnchzrmro
+      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_HOST: https://dbc-5f7556f4-244f.cloud.databricks.com
+      DATABRICKS_CLIENT_ID: d62bf633-ffca-4cdf-aad0-d6441418828f
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Fetch raw OIDC token
+        id: fetch_token
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          echo "Requesting OIDC token from GitHub with audience: $AUDIENCE"
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL: $ACTIONS_ID_TOKEN_REQUEST_URL"
+
+          # Solicita el token con el audience configurado para Databricks
+          RESP=$(curl -s -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=$AUDIENCE")
+
+          echo "Full JSON response from GitHub:"
+          echo "$RESP" | jq .
+
+          # Extraer el token
+          TOKEN=$(echo "$RESP" | jq -r '.value')
+
+          echo
+          echo "----- RAW OIDC TOKEN (BEGIN) -----"
+          echo "$TOKEN"
+          echo "----- RAW OIDC TOKEN (END) -----"
+          echo
+
+          # Guardar el token en un archivo
+          echo "$TOKEN" > oidc_token.txt
+          echo "TOKEN=$TOKEN" >> $GITHUB_ENV
+
+      - name: Decode JWT header
+        shell: bash
+        run: |
+          set -euxo pipefail
+          HEADER=$(echo "$TOKEN" | awk -F'.' '{print $1}')
+          PAD=$((4 - ${#HEADER} % 4))
+          if [ $PAD -ne 4 ]; then
+            HEADER="${HEADER}$(printf '%0.s=' $(seq 1 $PAD))"
+          fi
+          echo "Decoded JWT header:"
+          echo "$HEADER" | base64 --decode | jq .
+
+      - name: Decode JWT payload (claims)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          PAYLOAD=$(echo "$TOKEN" | awk -F'.' '{print $2}')
+          PAD=$((4 - ${#PAYLOAD} % 4))
+          if [ $PAD -ne 4 ]; then
+            PAYLOAD="${PAYLOAD}$(printf '%0.s=' $(seq 1 $PAD))"
+          fi
+          echo "Decoded JWT payload (claims):"
+          echo "$PAYLOAD" | base64 --decode | jq .
+
+      - name: Upload OIDC token as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oidc-token
+          path: oidc_token.txt
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Run Databricks CLI commands
+        run: databricks current-user me
